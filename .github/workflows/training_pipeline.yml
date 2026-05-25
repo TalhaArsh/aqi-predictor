@@ -1,0 +1,158 @@
+# ============================================================
+# Training Pipeline — runs daily at 02:00 UTC
+# Pulls latest data, retrains Ridge + RF + CatBoost,
+# registers best model per horizon to Production in MLflow.
+# ============================================================
+
+name: Training Pipeline (Daily)
+
+on:
+  schedule:
+    - cron: "0 2 * * *"   # 02:00 UTC daily (07:00 Karachi PKT)
+  workflow_dispatch:       # manual trigger for testing
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  retrain:
+    name: Retrain Models & Register Best
+    runs-on: ubuntu-latest
+    timeout-minutes: 90    # Ridge+RF+CatBoost takes ~30-40 min
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python setup ──────────────────────────────────
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      # ── 3. Install all dependencies ──────────────────────
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          # Install in order to avoid resolution conflicts
+          pip install pandas numpy pyarrow requests python-dotenv
+          pip install scikit-learn shap catboost
+          pip install dvc[http] dagshub mlflow
+          pip install joblib matplotlib seaborn
+
+      # ── 4. Configure DVC remote credentials ─────────────
+      - name: Configure DVC remote credentials
+        run: |
+          dvc remote modify dagshub --local auth basic
+          dvc remote modify dagshub --local user ${{ secrets.DAGSHUB_USERNAME }}
+          dvc remote modify dagshub --local password ${{ secrets.DAGSHUB_TOKEN }}
+
+      # ── 5. Pull latest features from DVC ─────────────────
+      - name: Pull latest feature data (DVC)
+        run: |
+          dvc pull data/raw/aqi_features_historical.parquet
+          dvc pull data/raw/aqi_features_live.parquet || \
+            echo "No live data yet — using historical only"
+
+      # ── 6. Merge live data into historical ───────────────
+      # Appends any new live rows to the historical dataset
+      # so training always uses the freshest possible data
+      - name: Merge live data into historical
+        env:
+          DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: |
+          python - << 'PYEOF'
+          import pandas as pd
+          from pathlib import Path
+
+          hist_path = Path("data/raw/aqi_features_historical.parquet")
+          live_path = Path("data/raw/aqi_features_live.parquet")
+
+          if not hist_path.exists():
+              print("No historical data — skipping merge")
+              exit(0)
+
+          df_hist = pd.read_parquet(hist_path)
+          print(f"Historical: {len(df_hist):,} rows")
+
+          if live_path.exists():
+              df_live = pd.read_parquet(live_path)
+              print(f"Live: {len(df_live):,} rows")
+              df_all = pd.concat([df_hist, df_live], ignore_index=True)
+              df_all = df_all.drop_duplicates(subset="timestamp")
+              df_all = df_all.sort_values("timestamp").reset_index(drop=True)
+              df_all.to_parquet(hist_path, index=False)
+              print(f"Merged: {len(df_all):,} rows → {hist_path}")
+          else:
+              print("No live data to merge")
+          PYEOF
+
+      # ── 7. Run imputation / feature engineering ───────────
+      - name: Run feature imputation pipeline
+        env:
+          DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+        run: python src/impute_features.py
+
+      # ── 8. Train Ridge ────────────────────────────────────
+      - name: Train Ridge regression
+        env:
+          DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: python -m src.training.train_ridge
+
+      # ── 9. Train Random Forest ────────────────────────────
+      - name: Train Random Forest
+        env:
+          DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: python -m src.training.train_rf
+
+      # ── 10. Train CatBoost ────────────────────────────────
+      - name: Train CatBoost
+        env:
+          DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: python -m src.training.train_catboost
+
+      # ── 11. Register best model per horizon ──────────────
+      - name: Register best models to Production
+        env:
+          DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: python -m src.training.register_best
+
+      # 25002500 15. Materialize features to Feast online store 2500250025002500250025002500250025002500250025002500250025002500
+      - name: Materialize Feast online store
+        run: python src/feast_materialize.py
+
+      # ── 12. Push updated data back to DVC ────────────────
+      - name: Push merged data to DagsHub (DVC)
+        run: |
+          dvc add data/raw/aqi_features_historical.parquet
+          dvc add data/interim/aqi_features_cleaned.parquet
+          dvc push
+
+      # ── 13. Commit updated DVC pointer files ─────────────
+      - name: Commit DVC pointer files
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "*.dvc" dvc.lock
+          git diff --staged --quiet || \
+            git commit -m "ci: retrain models [$(date -u '+%Y-%m-%d')] [skip ci]"
+          git push
+
+      # ── 14. Report ────────────────────────────────────────
+      - name: Log completion
+        run: |
+          echo "✅ Training pipeline completed at $(date -u)"
+          echo "   Models updated in DagsHub MLflow registry"
+          echo "   View: https://dagshub.com/TalhaArsh/aqi-predictor/experiments"

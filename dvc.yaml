@@ -1,0 +1,78 @@
+# DVC Pipeline Definition
+# Defines the full ML pipeline as a DAG of stages.
+# Run with: dvc repro
+# Each stage tracks inputs/outputs so DVC only re-runs changed stages.
+
+stages:
+
+  # Stage 1: Fetch historical data from Open-Meteo (run once or on demand)
+  backfill:
+    cmd: python src/backfill_pipeline.py
+    deps:
+      - src/backfill_pipeline.py
+    outs:
+      - data/raw/aqi_features_historical.parquet
+
+  # Stage 2: Feature engineering — lags, rolling windows, targets
+  impute:
+    cmd: python src/impute_features.py
+    deps:
+      - src/impute_features.py
+      - data/raw/aqi_features_historical.parquet
+    outs:
+      - data/interim/aqi_features_cleaned.parquet
+
+  # Stage 3a: Train Ridge regression (6 horizons)
+  train_ridge:
+    cmd: python -m src.training.train_ridge
+    deps:
+      - src/training/train_ridge.py
+      - src/training/data_loader.py
+      - src/training/evaluate.py
+      - data/interim/aqi_features_cleaned.parquet
+    outs:
+      - models/ridge_metrics.csv
+
+  # Stage 3b: Train Random Forest + SHAP (6 horizons)
+  train_rf:
+    cmd: python -m src.training.train_rf
+    deps:
+      - src/training/train_rf.py
+      - src/training/data_loader.py
+      - src/training/evaluate.py
+      - data/interim/aqi_features_cleaned.parquet
+    outs:
+      - models/rf_metrics.csv
+
+  # Stage 3c: Train CatBoost (6 horizons)
+  train_catboost:
+    cmd: python -m src.training.train_catboost
+    deps:
+      - src/training/train_catboost.py
+      - src/training/data_loader.py
+      - src/training/evaluate.py
+      - data/interim/aqi_features_cleaned.parquet
+    outs:
+      - models/catboost_metrics.csv
+
+  # Stage 4: Register best model per horizon to Production
+  register_best:
+    cmd: python -m src.training.register_best
+    deps:
+      - src/training/register_best.py
+      - models/ridge_metrics.csv
+      - models/rf_metrics.csv
+      - models/catboost_metrics.csv
+    outs:
+      - models/best_models.json:
+          cache: false    # always re-run, small file
+
+  # Stage 5: Live feature pipeline (run by CI hourly, not dvc repro)
+  # Listed here for documentation; actual scheduling is in GitHub Actions.
+  feature_pipeline:
+    cmd: python src/feature_pipeline.py
+    deps:
+      - src/feature_pipeline.py
+    outs:
+      - data/raw/aqi_features_live.parquet:
+          cache: false    # always fresh, don't cache in DVC

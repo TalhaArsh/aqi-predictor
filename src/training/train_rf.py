@@ -143,7 +143,12 @@ def train_one_horizon(data, horizon):
                 f"MAE={m_test_d['MAE']:.2f}, R²={m_test_d['R2']:.3f}")
 
     rf_model = pipe.named_steps["rf"]
-    shap_paths = generate_shap_plots(rf_model, X_train_i, horizon)
+    # Skip SHAP in CI — takes 45+ min and risks timeout
+    # Set SKIP_SHAP=true in GitHub Actions env to disable
+    skip_shap = os.getenv("SKIP_SHAP", "false").lower() == "true" or                 os.getenv("CI", "false").lower() == "true"
+    shap_paths = [] if skip_shap else generate_shap_plots(rf_model, X_train_i, horizon)
+    if skip_shap:
+        logger.info("  SHAP skipped (CI environment)")
 
     with mlflow.start_run(run_name=f"rf_{horizon}h"):
         mlflow.log_param("model_type", "RandomForest")

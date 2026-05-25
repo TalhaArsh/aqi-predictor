@@ -228,11 +228,14 @@ def train_catboost_for_horizon(data, h: int, feature_names: List[str]):
     logger.info(f"  Delta-scale test: RMSE={m_test_delta['RMSE']:.2f}, "
                 f"R²={m_test_delta['R2']:.3f}")
 
-    # SHAP only for medium-to-long horizons (most interpretation value)
+    # Skip SHAP in CI — too slow for automated runs
+    skip_shap = os.getenv("SKIP_SHAP", "false").lower() == "true" or                 os.getenv("CI", "false").lower() == "true"
     shap_paths = []
-    if h in [6, 24, 48, 72]:
+    if not skip_shap and h in [6, 24, 48, 72]:
         logger.info(f"  Generating SHAP for {h}h...")
         shap_paths = generate_shap_plots(best_model, X_val, h)
+    elif skip_shap:
+        logger.info(f"  SHAP skipped (CI environment)")
 
     # Log to MLflow
     with mlflow.start_run(run_name=f"catboost_{h}h"):

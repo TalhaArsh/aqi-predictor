@@ -135,55 +135,7 @@ def get_historical_features(entity_df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def get_online_features(city: str = "Karachi") -> Optional[dict]:
-    """Retrieve latest features from online store for real-time inference.
 
-    Returns dict of {feature_name: value} for the given city.
-    Used by the dashboard to get current features before calling the model.
-    Falls back to reading from live Parquet only if online store unavailable.
-    """
-    store = get_store()
-    try:
-        result = store.get_online_features(
-            features=FEATURE_REFS,
-            entity_rows=[{"city": city}],
-        ).to_dict()
-
-        # Flatten: "view_name__feature_name" → "feature_name"
-        # Also handle "view_name:feature_name" format
-        flat = {}
-        for key, vals in result.items():
-            if key == "city":
-                continue
-            # Extract just the feature name from "view__feature" or "view:feature"
-            if "__" in key:
-                feat_name = key.split("__", 1)[-1]
-            elif ":" in key:
-                feat_name = key.split(":", 1)[-1]
-            else:
-                feat_name = key
-            val = vals[0] if isinstance(vals, list) else vals
-            flat[feat_name] = val
-
-        # Check if we got real non-null values
-        non_null = {k: v for k, v in flat.items() if v is not None}
-        if len(non_null) < 5:
-            logger.warning(
-                f"Online store returned only {len(non_null)} non-null values "
-                f"— falling back to live Parquet"
-            )
-            return _fallback_from_parquet(city)
-
-        logger.info(
-            f"✅ Online features for {city}: "
-            f"AQI={flat.get('aqi')}, temp={flat.get('temperature')}, "
-            f"n_features={len(non_null)}"
-        )
-        return flat
-
-    except Exception as e:
-        logger.warning(f"Online store read failed: {e} — falling back to Parquet")
-        return _fallback_from_parquet(city)
 
 
 def _fallback_from_parquet(city: str) -> Optional[dict]:
@@ -200,55 +152,106 @@ def _fallback_from_parquet(city: str) -> Optional[dict]:
 
 
 def push_to_online_store(df: pd.DataFrame):
-    """Push features directly to Feast online store using write_to_online_store.
+    """Push features directly to Redis Cloud using redis-py.
 
-    Uses write_to_online_store() instead of push() — more reliable across
-    Feast versions and explicitly targets the online store.
+    Bypasses Feast's materialize (which needs DagsHub auth for offline store)
+    and writes directly to Redis. Features are stored as Redis hashes with
+    key pattern: {project}:{entity_key}:{feature_view_name}
+
+    This works in all environments: local, GitHub Actions, Streamlit Cloud.
     """
-    store = get_store()
+    import os
+    import json
+    import struct
+    import redis as redis_lib
+
     try:
-        import pytz
-        df = df.copy()
+        # Build Redis connection from env vars
+        host = os.getenv("REDIS_HOST",
+            "innovative-microquiet-birthday-21764.db.redis.io")
+        port = int(os.getenv("REDIS_PORT", "16572"))
+        password = os.getenv("REDIS_PASSWORD", "")
 
-        # Feast requires timezone-aware timestamps
-        if "timestamp" in df.columns:
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
-            if df["timestamp"].dt.tz is None:
-                df["timestamp"] = df["timestamp"].dt.tz_localize(pytz.UTC)
+        r = redis_lib.Redis(host=host, port=port, password=password,
+                            decode_responses=False)
+        r.ping()
+        logger.info("Connected to Redis Cloud")
 
-        # Cast numeric columns to float32 (matches schema dtype)
+        row = df.iloc[0]
+        city = str(row.get("city", "Karachi"))
+
+        # Store all features as a single Redis hash per city
+        # Key: aqi_predictor:features:Karachi
+        key = f"aqi_predictor:features:{city}"
+        feature_dict = {}
         for col in df.columns:
-            if col not in ["timestamp", "city"] and df[col].dtype != object:
-                try:
-                    df[col] = df[col].astype("float32")
-                except (ValueError, TypeError):
-                    pass
-
-        # Write to each feature view's online store directly
-        feature_views = store.list_feature_views()
-        written = 0
-        for fv in feature_views:
-            # Get features that belong to this view
-            fv_feature_names = [f.name for f in fv.features]
-            available = [c for c in fv_feature_names if c in df.columns]
-            if not available:
+            if col in ["timestamp", "city"]:
                 continue
+            val = row.get(col)
+            if val is not None and not (isinstance(val, float) and
+                                         __import__("math").isnan(val)):
+                feature_dict[col] = str(float(val))
 
-            # Build subset df for this feature view
-            cols_needed = ["timestamp", "city"] + available
-            subset = df[[c for c in cols_needed if c in df.columns]].copy()
+        # Add timestamp
+        ts = row.get("timestamp")
+        if ts is not None:
+            feature_dict["_timestamp"] = str(pd.Timestamp(ts).timestamp())
 
-            try:
-                store.write_to_online_store(
-                    feature_view_name=fv.name,
-                    df=subset,
-                )
-                written += 1
-                logger.debug(f"  Wrote to {fv.name}: {available[:3]}...")
-            except Exception as e:
-                logger.debug(f"  Skipped {fv.name}: {e}")
-
-        logger.info(f"✅ Pushed to {written}/{len(feature_views)} feature views in online store")
+        if feature_dict:
+            r.hset(key, mapping=feature_dict)
+            r.expire(key, 7200)  # 2 hour TTL
+            logger.info(f"✅ Pushed {len(feature_dict)} features to Redis"
+                        f" (key: {key})")
+        else:
+            logger.warning("No features to push to Redis")
 
     except Exception as e:
-        logger.warning(f"Feast push failed: {e}")
+        logger.warning(f"Redis push failed: {e}")
+
+
+def get_online_features(city: str = "Karachi") -> Optional[dict]:
+    """Retrieve latest features from Redis Cloud for real-time inference.
+
+    Reads from the Redis hash written by push_to_online_store().
+    Falls back to live Parquet if Redis is unavailable.
+    """
+    import os
+    import redis as redis_lib
+
+    try:
+        host = os.getenv("REDIS_HOST",
+            "innovative-microquiet-birthday-21764.db.redis.io")
+        port = int(os.getenv("REDIS_PORT", "16572"))
+        password = os.getenv("REDIS_PASSWORD", "")
+
+        r = redis_lib.Redis(host=host, port=port, password=password,
+                            decode_responses=True)
+
+        key = f"aqi_predictor:features:{city}"
+        data = r.hgetall(key)
+
+        if not data:
+            logger.warning(f"Redis key {key} empty — falling back to Parquet")
+            return _fallback_from_parquet(city)
+
+        # Convert string values back to float
+        features = {}
+        for k, v in data.items():
+            if k == "_timestamp":
+                continue
+            try:
+                features[k] = float(v)
+            except (ValueError, TypeError):
+                features[k] = v
+
+        n_non_null = sum(1 for v in features.values()
+                        if v is not None and v == v)
+        logger.info(f"✅ Redis features for {city}: "
+                    f"AQI={features.get('aqi')}, "
+                    f"temp={features.get('temperature')}, "
+                    f"n={n_non_null}")
+        return features
+
+    except Exception as e:
+        logger.warning(f"Redis read failed: {e} — falling back to Parquet")
+        return _fallback_from_parquet(city)

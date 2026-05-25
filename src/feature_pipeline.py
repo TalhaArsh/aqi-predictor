@@ -133,6 +133,13 @@ def add_lag_features(df_new: pd.DataFrame,
         logger.warning("No history — lag features will be NaN")
         return df_new
 
+    # Ensure consistent timezone (strip tz from both if mixed)
+    for _df in [df_history, df_new]:
+        if "timestamp" in _df.columns:
+            _df["timestamp"] = pd.to_datetime(_df["timestamp"])
+            if hasattr(_df["timestamp"].dt, "tz") and _df["timestamp"].dt.tz is not None:
+                _df["timestamp"] = _df["timestamp"].dt.tz_localize(None)
+
     combined = pd.concat([df_history, df_new], ignore_index=True)
     combined = combined.sort_values("timestamp").reset_index(drop=True)
 
@@ -169,13 +176,27 @@ def load_history(path: Path, n_hours: int = 73) -> pd.DataFrame:
         return pd.DataFrame()
     df = pd.read_parquet(path)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
+    # Strip timezone to keep everything tz-naive (consistent with new rows)
+    if df["timestamp"].dt.tz is not None:
+        df["timestamp"] = df["timestamp"].dt.tz_localize(None)
     return df.sort_values("timestamp").tail(n_hours).reset_index(drop=True)
+
+
+def _strip_tz(df: pd.DataFrame) -> pd.DataFrame:
+    """Strip timezone from timestamp column to keep everything tz-naive."""
+    df = df.copy()
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        if df["timestamp"].dt.tz is not None:
+            df["timestamp"] = df["timestamp"].dt.tz_localize(None)
+    return df
 
 
 def append_to_parquet(df: pd.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    df = _strip_tz(df)
     if path.exists():
-        existing = pd.read_parquet(path)
+        existing = _strip_tz(pd.read_parquet(path))
         combined = pd.concat([existing, df], ignore_index=True)
         combined = combined.drop_duplicates(subset=["timestamp","city"], keep="last")
         combined = combined.sort_values("timestamp").reset_index(drop=True)

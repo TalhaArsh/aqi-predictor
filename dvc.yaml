@@ -67,12 +67,5 @@ stages:
       - models/best_models.json:
           cache: false    # always re-run, small file
 
-  # Stage 5: Live feature pipeline (run by CI hourly, not dvc repro)
-  # Listed here for documentation; actual scheduling is in GitHub Actions.
-  feature_pipeline:
-    cmd: python src/feature_pipeline.py
-    deps:
-      - src/feature_pipeline.py
-    outs:
-      - data/raw/aqi_features_live.parquet:
-          cache: false    # always fresh, don't cache in DVC
+  # Note: feature_pipeline runs hourly via GitHub Actions (not dvc repro)
+  # Live Parquet is tracked as standalone DVC file (data/raw/aqi_features_live.parquet.dvc)

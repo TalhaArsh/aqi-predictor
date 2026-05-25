@@ -23,3 +23,6 @@ Thumbs.db
 /tmp
 notebooks/
 *.zip
+
+!data/**/*.dvc
+!data/raw/aqi_features_live.parquet.dvc

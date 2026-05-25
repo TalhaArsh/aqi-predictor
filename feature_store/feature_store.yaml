@@ -1,9 +1,9 @@
 project: aqi_predictor
-registry: data/feast/registry.db
+registry: ../data/feast/registry.db
 provider: local
 online_store:
-  type: sqlite
-  path: data/feast/online_store.db
+    type: redis
+    connection_string: innovative-microquiet-birthday-21764.db.redis.io:16572,password=
 offline_store:
-  type: file
-entity_key_serialization_version: 2
+    type: file
+entity_key_serialization_version: 3

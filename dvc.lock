@@ -12,3 +12,15 @@ stages:
       hash: md5
       md5: 4eaea31998524d35e1f62fbf33dae8eb
       size: 427590
+  feature_pipeline:
+    cmd: python src/feature_pipeline.py
+    deps:
+    - path: src/feature_pipeline.py
+      hash: md5
+      md5: 7e5975ebe525ac56e1715716284d8735
+      size: 10033
+    outs:
+    - path: data/raw/aqi_features_live.parquet
+      hash: md5
+      md5: 45d3e527b188c403019f1d8d8641f4ca
+      size: 68954

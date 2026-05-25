@@ -79,8 +79,8 @@ jobs:
 
       - name: Push live Parquet to DagsHub (DVC)
         run: |
-          dvc add data/raw/aqi_features_live.parquet
-          dvc push data/raw/aqi_features_live.parquet
+          # File is already tracked by dvc.yaml stage — just push
+          dvc push || echo "DVC push failed — Redis still updated"
 
       - name: Log completion
         run: |

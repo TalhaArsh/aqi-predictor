@@ -1,18 +1,16 @@
 # ============================================================
 # Feature Pipeline — runs every hour
-# Fetches live AQI from Open-Meteo (same source as training)
-# appends to Parquet, pushes to DagsHub via DVC.
-#
-# No AQICN or OpenWeather API keys needed — Open-Meteo is
-# free and key-less. This eliminates training-serving skew.
+# Fetches live AQI + weather from Open-Meteo (no API key)
+# Pushes features to Feast online store (Redis Cloud)
+# No DVC needed — Feast handles online feature serving
 # ============================================================
 
 name: Feature Pipeline (Hourly)
 
 on:
   schedule:
-    - cron: "0 * * * *"   # top of every hour, UTC
-  workflow_dispatch:       # manual trigger for testing
+    - cron: "0 * * * *"
+  workflow_dispatch:
 
 env:
   PYTHON_VERSION: "3.11"
@@ -37,44 +35,27 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install pandas numpy pyarrow requests python-dotenv \
-                      "dvc[http]" dagshub mlflow
+                      "feast[redis]>=0.40.0" dagshub mlflow
 
-      - name: Configure DVC remote credentials
+      - name: Create required directories
         run: |
-          dvc remote modify dagshub --local auth basic
-          dvc remote modify dagshub --local user ${{ secrets.DAGSHUB_USERNAME }}
-          dvc remote modify dagshub --local password ${{ secrets.DAGSHUB_TOKEN }}
+          mkdir -p data/raw data/feast
 
-      - name: Pull existing live data (DVC)
+      - name: Apply Feast feature definitions
+        env:
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
         run: |
-          dvc pull data/raw/aqi_features_live.parquet --run-cache || \
-          echo "No existing live data — will create fresh file"
+          feast -c feature_store apply
 
-      - name: Run feature pipeline (Open-Meteo, no API key needed)
+      - name: Run feature pipeline
         env:
           DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
-          REDIS_HOST: ${{ secrets.REDIS_HOST }}
-          REDIS_PORT: ${{ secrets.REDIS_PORT }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           CITY_NAME: "Karachi"
           CITY_LAT: "24.8607"
           CITY_LON: "67.0011"
-        run: python src/feature_pipeline.py
-
-      - name: Push updated data to DagsHub (DVC)
-        run: |
-          dvc add data/raw/aqi_features_live.parquet
-          dvc push data/raw/aqi_features_live.parquet
-
-      - name: Commit DVC pointer file
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/raw/aqi_features_live.parquet.dvc
-          git diff --staged --quiet || \
-            git commit -m "ci: update live features [$(date -u '+%Y-%m-%d %H:%M')] [skip ci]"
-          git push
+        run: python -m src.feature_pipeline
 
       - name: Log completion
         run: echo "✅ Feature pipeline done at $(date -u)"

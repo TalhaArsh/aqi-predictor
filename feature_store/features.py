@@ -46,7 +46,7 @@ city = Entity(
 # ─────────────────────── Data Sources ─────────────────────────
 
 aqi_source = FileSource(
-    path="data/interim/aqi_features_cleaned.parquet",
+    path="../data/interim/aqi_features_cleaned.parquet",
     timestamp_field="timestamp",
     description="Cleaned hourly AQI + weather features from Open-Meteo",
 )

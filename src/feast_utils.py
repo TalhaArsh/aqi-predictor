@@ -140,7 +140,7 @@ def get_online_features(city: str = "Karachi") -> Optional[dict]:
 
     Returns dict of {feature_name: value} for the given city.
     Used by the dashboard to get current features before calling the model.
-    Falls back to reading from Parquet if online store is empty.
+    Falls back to reading from live Parquet only if online store unavailable.
     """
     store = get_store()
     try:
@@ -149,19 +149,36 @@ def get_online_features(city: str = "Karachi") -> Optional[dict]:
             entity_rows=[{"city": city}],
         ).to_dict()
 
-        # Check if we got real values (not all None)
-        sample_val = result.get("aqi_features__aqi", [None])[0]
-        if sample_val is None:
-            logger.warning("Online store empty — falling back to Parquet")
-            return _fallback_from_parquet(city)
-
         # Flatten: "view_name__feature_name" → "feature_name"
+        # Also handle "view_name:feature_name" format
         flat = {}
         for key, vals in result.items():
-            feat_name = key.split("__")[-1] if "__" in key else key
-            flat[feat_name] = vals[0] if isinstance(vals, list) else vals
+            if key == "city":
+                continue
+            # Extract just the feature name from "view__feature" or "view:feature"
+            if "__" in key:
+                feat_name = key.split("__", 1)[-1]
+            elif ":" in key:
+                feat_name = key.split(":", 1)[-1]
+            else:
+                feat_name = key
+            val = vals[0] if isinstance(vals, list) else vals
+            flat[feat_name] = val
 
-        logger.info(f"Online features retrieved for {city}: AQI={flat.get('aqi')}")
+        # Check if we got real non-null values
+        non_null = {k: v for k, v in flat.items() if v is not None}
+        if len(non_null) < 5:
+            logger.warning(
+                f"Online store returned only {len(non_null)} non-null values "
+                f"— falling back to live Parquet"
+            )
+            return _fallback_from_parquet(city)
+
+        logger.info(
+            f"✅ Online features for {city}: "
+            f"AQI={flat.get('aqi')}, temp={flat.get('temperature')}, "
+            f"n_features={len(non_null)}"
+        )
         return flat
 
     except Exception as e:
@@ -183,14 +200,55 @@ def _fallback_from_parquet(city: str) -> Optional[dict]:
 
 
 def push_to_online_store(df: pd.DataFrame):
-    """Push a DataFrame of features directly to the online store.
+    """Push features directly to Feast online store using write_to_online_store.
 
-    Called by feature_pipeline.py after each hourly fetch.
-    df must have [timestamp, city] columns plus all feature columns.
+    Uses write_to_online_store() instead of push() — more reliable across
+    Feast versions and explicitly targets the online store.
     """
     store = get_store()
     try:
-        store.push("aqi_push_source", df, to=store.PushMode.ONLINE_AND_OFFLINE)
-        logger.info(f"Pushed {len(df)} row(s) to Feast online + offline store")
+        import pytz
+        df = df.copy()
+
+        # Feast requires timezone-aware timestamps
+        if "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            if df["timestamp"].dt.tz is None:
+                df["timestamp"] = df["timestamp"].dt.tz_localize(pytz.UTC)
+
+        # Cast numeric columns to float32 (matches schema dtype)
+        for col in df.columns:
+            if col not in ["timestamp", "city"] and df[col].dtype != object:
+                try:
+                    df[col] = df[col].astype("float32")
+                except (ValueError, TypeError):
+                    pass
+
+        # Write to each feature view's online store directly
+        feature_views = store.list_feature_views()
+        written = 0
+        for fv in feature_views:
+            # Get features that belong to this view
+            fv_feature_names = [f.name for f in fv.features]
+            available = [c for c in fv_feature_names if c in df.columns]
+            if not available:
+                continue
+
+            # Build subset df for this feature view
+            cols_needed = ["timestamp", "city"] + available
+            subset = df[[c for c in cols_needed if c in df.columns]].copy()
+
+            try:
+                store.write_to_online_store(
+                    feature_view_name=fv.name,
+                    df=subset,
+                )
+                written += 1
+                logger.debug(f"  Wrote to {fv.name}: {available[:3]}...")
+            except Exception as e:
+                logger.debug(f"  Skipped {fv.name}: {e}")
+
+        logger.info(f"✅ Pushed to {written}/{len(feature_views)} feature views in online store")
+
     except Exception as e:
         logger.warning(f"Feast push failed: {e}")

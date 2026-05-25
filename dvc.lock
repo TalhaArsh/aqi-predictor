@@ -1,0 +1,14 @@
+schema: '2.0'
+stages:
+  backfill:
+    cmd: python src/backfill_pipeline.py
+    deps:
+    - path: src/backfill_pipeline.py
+      hash: md5
+      md5: 4998808fc987443286f044d602770bec
+      size: 7496
+    outs:
+    - path: data/raw/aqi_features_historical.parquet
+      hash: md5
+      md5: 4eaea31998524d35e1f62fbf33dae8eb
+      size: 427590

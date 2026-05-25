@@ -1,0 +1,7 @@
+[core]
+    remote = dagshub
+['remote "dagshub"']
+    url = https://dagshub.com/TalhaArsh/aqi-predictor.dvc
+    auth = basic
+    user = TalhaArsh
+    password = " ab0e3c4a6d8d871106bcce2b8a959b905027271d"

@@ -26,3 +26,5 @@ notebooks/
 
 !data/**/*.dvc
 !data/raw/aqi_features_live.parquet.dvc
+
+!data/raw/aqi_features_live.parquet.dvc

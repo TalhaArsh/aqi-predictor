@@ -68,10 +68,21 @@ jobs:
           dvc pull data/raw/aqi_features_historical.parquet || \
             echo "No historical data in DVC yet"
 
-      - name: Pull live data from DagsHub (DVC)
+      - name: Restore live Parquet from cache
+        uses: actions/cache@v4
+        with:
+          path: data/raw/aqi_features_live.parquet
+          key: live-parquet-${{ github.run_number }}
+          restore-keys: |
+            live-parquet-
+
+      - name: Check live data
         run: |
-          dvc pull data/raw/aqi_features_live.parquet || \
-            echo "No live data yet — using historical only"
+          if [ -f "data/raw/aqi_features_live.parquet" ]; then
+            python -c "import pandas as pd; df=pd.read_parquet('data/raw/aqi_features_live.parquet'); print(f'Live Parquet: {len(df)} rows, latest: {df.timestamp.max()}')"
+          else
+            echo "No live data found — training on historical only"
+          fi
 
       - name: Merge live data into historical
         run: |

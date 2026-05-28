@@ -68,7 +68,14 @@ def fetch_current_aq() -> Optional[pd.DataFrame]:
             df[col] = pd.to_numeric(df[col], errors="coerce")
         # Most recent non-null AQI row
         valid = df.dropna(subset=["aqi"])
-        row = valid.iloc[[-1]] if not valid.empty else df.iloc[[-1]]
+        if valid.empty:
+            row = df.iloc[[-1]]
+        else:
+            # Select the row closest to current UTC time (not last of day)
+            now_utc = pd.Timestamp.utcnow().tz_localize(None)
+            valid = valid.copy()
+            valid["_diff"] = (valid["timestamp"] - now_utc).abs()
+            row = valid.nsmallest(1, "_diff").drop(columns=["_diff"])
         logger.info(f"AQ: timestamp={row['timestamp'].iloc[0]}, "
                     f"AQI={row['aqi'].iloc[0]}, PM2.5={row['pm25'].iloc[0]}")
         return row.reset_index(drop=True)

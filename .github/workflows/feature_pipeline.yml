@@ -37,9 +37,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: data/raw/aqi_features_live.parquet
-          key: live-parquet-${{ github.run_number }}
+          key: live-parquet-v2-${{ github.run_number }}
           restore-keys: |
-            live-parquet-
+            live-parquet-v2-
 
       - name: Apply Feast feature definitions
         env:

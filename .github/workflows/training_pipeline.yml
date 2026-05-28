@@ -15,7 +15,7 @@ name: Training Pipeline (Daily)
 
 on:
   schedule:
-    - cron: "0 2 * * *"   # 02:00 UTC daily (07:00 Karachi PKT)
+    - cron: "17 2 * * *"   # 02:00 UTC daily (07:00 Karachi PKT)
   workflow_dispatch:
 
 env:

@@ -26,6 +26,11 @@ jobs:
     name: Retrain Models & Register Best
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+      DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+      MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      SKIP_SHAP: "true"
 
     steps:
       - name: Checkout repository

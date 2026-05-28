@@ -30,13 +30,18 @@ DAGSHUB_REPO = "aqi-predictor"
 MODELS_DIR = Path("models")
 
 METRICS_FILES = {
-    "ridge": MODELS_DIR / "ridge_metrics.csv",
-    "rf":    MODELS_DIR / "rf_metrics.csv",
-    "lstm":  MODELS_DIR / "lstm_metrics.csv",
+    "ridge":    MODELS_DIR / "ridge_metrics.csv",
+    "rf":       MODELS_DIR / "rf_metrics.csv",
+    "lstm":     MODELS_DIR / "lstm_metrics.csv",
+    "catboost": MODELS_DIR / "catboost_metrics.csv",
+    "xgboost":  MODELS_DIR / "xgboost_metrics.csv",
 }
 
 
 def init_dagshub():
+    token = os.getenv("DAGSHUB_TOKEN")
+    if token:
+        dagshub.auth.add_app_token(token)
     dagshub.init(repo_owner=DAGSHUB_USERNAME, repo_name=DAGSHUB_REPO, mlflow=True)
 
 

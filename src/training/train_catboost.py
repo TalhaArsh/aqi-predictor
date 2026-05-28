@@ -62,6 +62,10 @@ np.random.seed(SEED)
 
 
 def init_dagshub():
+    # Authenticate with token (prevents interactive OAuth in CI)
+    token = os.getenv("DAGSHUB_TOKEN")
+    if token:
+        dagshub.auth.add_app_token(token)
     dagshub.init(repo_owner=DAGSHUB_USERNAME, repo_name=DAGSHUB_REPO, mlflow=True)
     mlflow.set_experiment(EXPERIMENT_NAME)
     logger.info(f"MLflow → {mlflow.get_tracking_uri()} | exp: {EXPERIMENT_NAME}")

@@ -49,7 +49,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install pandas numpy pyarrow requests python-dotenv
-          pip install scikit-learn shap catboost
+          pip install scikit-learn shap catboost xgboost
           pip install "dvc[http]>=3.0.0" dagshub mlflow
           pip install joblib matplotlib seaborn
 
@@ -59,7 +59,7 @@ jobs:
       - name: Initialize DVC
         run: |
           dvc init --no-scm 2>/dev/null || true
-          dvc remote add -d dagshub https://dagshub.com/TalhaArsh/aqi-predictor.dvc || true
+          dvc remote add -d -f dagshub https://dagshub.com/TalhaArsh/aqi-predictor.dvc || true
           dvc remote modify dagshub auth basic
           dvc remote modify dagshub user ${{ secrets.DAGSHUB_USERNAME }}
           dvc remote modify dagshub password ${{ secrets.DAGSHUB_TOKEN }}

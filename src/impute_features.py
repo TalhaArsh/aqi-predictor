@@ -21,6 +21,7 @@ Feature groups (110 total with weather):
 """
 
 import logging
+import os
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -43,6 +44,17 @@ def load_raw(path: Path) -> pd.DataFrame:
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.drop_duplicates("timestamp").sort_values("timestamp").reset_index(drop=True)
     logger.info(f"Loaded raw: {len(df):,} rows × {len(df.columns)} cols")
+
+    # Apply rolling window filter (mentor recommendation: 90 days)
+    window_days = int(os.getenv("TRAINING_WINDOW_DAYS", "90"))
+    if window_days > 0:
+        cutoff = df["timestamp"].max() - pd.Timedelta(days=window_days)
+        full_len = len(df)
+        df = df[df["timestamp"] >= cutoff].reset_index(drop=True)
+        logger.info(f"Applied {window_days}-day rolling window: "
+                    f"{full_len:,} → {len(df):,} rows "
+                    f"({df['timestamp'].min().date()} → {df['timestamp'].max().date()})")
+
     return df
 
 
@@ -170,15 +182,28 @@ def drop_boundary_nans(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def auto_drop_null_cols(df: pd.DataFrame, threshold: float = 0.999) -> pd.DataFrame:
-    """Drop feature columns that are >99.9% null (e.g. nh3)."""
+    """Drop ONLY columns that are 100% null across the ENTIRE dataset.
+
+    Previously dropped columns >99.9% null, which caused problems when
+    live data rows (with NaN rolling features) were merged into training data.
+    Now only drops columns like 'nh3' that are truly never populated.
+
+    Weather rolling/lag features are NEVER dropped even if some rows are NaN
+    — they are imputed via forward-fill in the reindex step.
+    """
     EXCLUDE = {"timestamp","city","is_imputed","is_long_gap"}
     TARGET  = {c for c in df.columns if "aqi_t_plus" in c or "aqi_delta" in c}
-    candidates = [c for c in df.columns if c not in EXCLUDE|TARGET]
-    null_fracs = df[candidates].isna().mean()
-    drop_cols  = null_fracs[null_fracs > threshold].index.tolist()
+
+    # Only drop if 100% null (not 99.9%) — much stricter
+    drop_cols = [
+        c for c in df.columns
+        if c not in EXCLUDE | TARGET
+        and df[c].dtype != "object"
+        and df[c].isna().all()  # ALL values null, not just 99.9%
+    ]
     if drop_cols:
+        logger.info(f"Auto-dropped {len(drop_cols)} 100%-null cols: {drop_cols}")
         df = df.drop(columns=drop_cols)
-        logger.info(f"Auto-dropped {len(drop_cols)} near-null cols: {drop_cols}")
     return df
 
 

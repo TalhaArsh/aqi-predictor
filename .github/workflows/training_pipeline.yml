@@ -31,6 +31,7 @@ jobs:
       DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
       MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
       SKIP_SHAP: "true"
+      TRAINING_WINDOW_DAYS: "90"
 
     steps:
       - name: Checkout repository
@@ -146,7 +147,16 @@ jobs:
           SKIP_SHAP: "true"
         run: python -m src.training.train_catboost
 
-      - name: Register best models to Production
+      - name: Train XGBoost
+        env:
+          DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          SKIP_SHAP: "true"
+          TRAINING_WINDOW_DAYS: "90"
+        run: python -m src.training.train_xgboost
+
+            - name: Register best models to Production
         env:
           DAGSHUB_USERNAME: ${{ secrets.DAGSHUB_USERNAME }}
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}

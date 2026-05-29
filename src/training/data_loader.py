@@ -53,6 +53,20 @@ def _load_from_parquet() -> pd.DataFrame:
     if df["timestamp"].dt.tz is not None:
         df["timestamp"] = df["timestamp"].dt.tz_localize(None)
     df = df.sort_values("timestamp").reset_index(drop=True)
+
+    # Apply rolling window filter (mentor recommendation)
+    # Short horizons (1-24h): 90-day window (recent patterns, less concept drift)
+    # Long horizons (48-72h): 365-day window (need full seasonal cycle)
+    # Override with TRAINING_WINDOW_DAYS env var (0 = use all data)
+    window_days = int(os.getenv("TRAINING_WINDOW_DAYS", "0"))
+    if window_days > 0:
+        cutoff = df["timestamp"].max() - pd.Timedelta(days=window_days)
+        full_len = len(df)
+        df = df[df["timestamp"] >= cutoff].reset_index(drop=True)
+        logger.info(f"Applied {window_days}-day rolling window: "
+                    f"{full_len:,} → {len(df):,} rows "
+                    f"({df['timestamp'].min()} → {df['timestamp'].max()})")
+
     logger.info(f"Loaded {len(df):,} rows × {len(df.columns)} columns from {CLEANED_PATH}")
     fully_null = [c for c in df.columns if df[c].isna().all()]
     if fully_null:

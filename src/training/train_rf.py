@@ -190,7 +190,9 @@ def main():
     logger.info("Loading data...")
     data = get_train_data()
 
-    summaries = [train_one_horizon(data, h) for h in FORECAST_HORIZONS]
+    summaries = []
+    for h in FORECAST_HORIZONS:
+        summaries.append(train_one_horizon(data, h))
     summary_df = pd.DataFrame(summaries)
     summary_df.to_csv(MODELS_DIR / "rf_metrics.csv", index=False)
 

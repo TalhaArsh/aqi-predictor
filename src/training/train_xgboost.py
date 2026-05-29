@@ -63,6 +63,10 @@ np.random.seed(SEED)
 
 
 def init_dagshub():
+    # Authenticate with token (prevents interactive OAuth in CI)
+    token = os.getenv("DAGSHUB_TOKEN")
+    if token:
+        dagshub.auth.add_app_token(token)
     dagshub.init(repo_owner=DAGSHUB_USERNAME, repo_name=DAGSHUB_REPO, mlflow=True)
     mlflow.set_experiment(EXPERIMENT_NAME)
     logger.info(f"MLflow → {mlflow.get_tracking_uri()} | exp: {EXPERIMENT_NAME}")
@@ -235,8 +239,10 @@ def train_xgb_for_horizon(data, h: int, feature_names: List[str]):
     logger.info(f"  Delta-scale test: RMSE={m_test_delta['RMSE']:.2f}, "
                 f"R²={m_test_delta['R2']:.3f}")
 
+    skip_shap = os.getenv("SKIP_SHAP", "false").lower() == "true" or \
+                os.getenv("CI", "false").lower() == "true"
     shap_paths = []
-    if h in [6, 24, 48, 72]:
+    if not skip_shap and h in [6, 24, 48, 72]:
         logger.info(f"  Generating SHAP for {h}h...")
         shap_paths = generate_shap_plots(best_model, X_val, h)
 

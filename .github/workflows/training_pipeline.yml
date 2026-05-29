@@ -108,11 +108,17 @@ jobs:
                   df["timestamp"] = pd.to_datetime(df["timestamp"])
                   if df["timestamp"].dt.tz is not None:
                       df["timestamp"] = df["timestamp"].dt.tz_localize(None)
-              df_all = pd.concat([df_hist, df_live], ignore_index=True)
+              # Only keep columns that exist in historical (raw cols only)
+              # Live Parquet has only raw columns: aqi, pm25, pm10, etc.
+              # Use intersection to prevent column mismatch
+              common_cols = [c for c in df_hist.columns if c in df_live.columns]
+              df_live_aligned = df_live[common_cols]
+              df_all = pd.concat([df_hist, df_live_aligned], ignore_index=True)
               df_all = df_all.drop_duplicates(subset="timestamp")
               df_all = df_all.sort_values("timestamp").reset_index(drop=True)
               df_all.to_parquet(hist_path, index=False)
               print(f"Merged: {len(df_all):,} rows saved to {hist_path}")
+              print(f"Columns: {len(df_all.columns)} (from {len(df_hist.columns)} hist + {len(df_live.columns)} live → intersection)")
           else:
               print("No live data to merge")
           PYEOF

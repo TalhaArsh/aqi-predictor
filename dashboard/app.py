@@ -281,11 +281,30 @@ def load_models():
         )
         mlflow.set_tracking_uri(tracking_uri)
 
-    horizon_model_map = {
-        1: "catboost_1h", 6: "catboost_6h",
-        12: "ridge_12h", 24: "rf_24h",
-        48: "ridge_48h", 72: "rf_72h",
-    }
+    # Dynamically discover Production models for each horizon
+    # Picks the MOST RECENTLY promoted Production model per horizon
+    all_model_names = [
+        f"{family}_{h}h"
+        for family in ["catboost", "xgboost", "rf", "ridge"]
+        for h in [1, 6, 12, 24, 48, 72]
+    ]
+    horizon_model_map = {}   # h → model_name
+    horizon_promo_time = {}  # h → creation_timestamp of Production version
+    client_temp = mlflow.tracking.MlflowClient()
+    for model_name in all_model_names:
+        try:
+            h = int(model_name.split("_")[-1].replace("h", ""))
+            versions = client_temp.search_model_versions(f"name='{model_name}'")
+            prod = [v for v in versions if v.current_stage == "Production"]
+            if prod:
+                # Use creation_timestamp to pick most recently promoted model
+                latest_prod = max(prod, key=lambda v: v.creation_timestamp)
+                ts = latest_prod.creation_timestamp
+                if h not in horizon_promo_time or ts > horizon_promo_time[h]:
+                    horizon_promo_time[h] = ts
+                    horizon_model_map[h] = model_name
+        except Exception:
+            pass
 
     client = mlflow.tracking.MlflowClient()
     models = {}
@@ -302,20 +321,25 @@ def load_models():
             latest = max(prod, key=lambda v: int(v.version))
             uri = f"models:/{model_name}/Production"
 
-            # Try different loaders based on model family
+            # Load model using appropriate loader based on family
             model = None
-            if "catboost" in model_name:
-                try:
-                    model = mlflow.catboost.load_model(uri)
-                except Exception:
+            try:
+                if "catboost" in model_name:
+                    try:
+                        model = mlflow.catboost.load_model(uri)
+                    except Exception:
+                        model = mlflow.sklearn.load_model(uri)
+                elif "xgboost" in model_name:
+                    try:
+                        model = mlflow.xgboost.load_model(uri)
+                    except Exception:
+                        model = mlflow.sklearn.load_model(uri)
+                else:
+                    # Ridge and RF are sklearn pipelines
                     model = mlflow.sklearn.load_model(uri)
-            elif "xgboost" in model_name or "xgb" in model_name:
-                try:
-                    model = mlflow.xgboost.load_model(uri)
-                except Exception:
-                    model = mlflow.sklearn.load_model(uri)
-            else:
-                model = mlflow.sklearn.load_model(uri)
+            except Exception as e:
+                st.warning(f"Failed to load {model_name}: {e}")
+                continue
 
             if model is not None:
                 # Get n_features safely — different models use different attrs
@@ -342,12 +366,23 @@ def load_models():
                 elif hasattr(model, "feature_names_"):
                     feature_names = list(model.feature_names_)
 
+                # Get test_r2 from MLflow run metrics
+                test_r2 = None
+                try:
+                    run_id = latest.run_id
+                    if run_id:
+                        run = mlflow.get_run(run_id)
+                        test_r2 = run.data.metrics.get("test_R2") or                                   run.data.metrics.get("test_r2")
+                except Exception:
+                    pass
+
                 models[h] = model
                 model_info[h] = {
                     "name": model_name,
                     "n_features": n_features,
                     "version": latest.version,
                     "feature_names": feature_names,
+                    "test_r2": test_r2,
                 }
 
         except Exception as e:
@@ -444,13 +479,11 @@ def make_forecasts(features: dict, models: dict, model_info: dict) -> dict:
 
             X = build_feature_vector(features, feature_cols)
 
-            # Predict based on model type
+            # Predict based on model family — detected dynamically
             if "catboost" in model_name:
                 from catboost import Pool
-                # Rebuild feature vector using model's exact feature names
-                cb_feature_names = model_info[h].get("feature_names") or model.feature_names_
+                cb_feature_names = model_info[h].get("feature_names") or                                    list(model.feature_names_)
                 X_cb = build_feature_vector(features, cb_feature_names)
-                # Convert categorical features to string
                 cat_cols = [c for c in cb_feature_names
                             if c in ["hour","day","month","day_of_week","is_weekend"]]
                 for c in cat_cols:
@@ -458,13 +491,17 @@ def make_forecasts(features: dict, models: dict, model_info: dict) -> dict:
                 cat_indices = [X_cb.columns.tolist().index(c) for c in cat_cols]
                 pool = Pool(X_cb, cat_features=cat_indices)
                 pred = model.predict(pool)
+            elif "xgboost" in model_name:
+                # XGBoost needs numpy array
+                try:
+                    pred = model.predict(X.values)
+                except Exception:
+                    pred = model.predict(X)
             else:
-                # Always pass named DataFrame to sklearn models
-                # so StandardScaler uses feature names not positions
+                # Ridge and RF — sklearn Pipeline with named DataFrame
                 try:
                     pred = model.predict(X)
                 except Exception as e:
-                    # Log silently and skip
                     forecasts[h] = None
                     continue
 

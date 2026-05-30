@@ -114,15 +114,38 @@ def main():
     print("PROMOTING WINNERS TO PRODUCTION")
     print("=" * 72)
 
+    ALL_FAMILIES = ["catboost", "xgboost", "rf", "ridge"]
+
     for _, row in best.iterrows():
         h = int(row["horizon_h"])
         family = row["family"]
         if family == "lstm":
-            # LSTM is a single multi-output model
             model_name = "lstm_multihorizon"
         else:
             model_name = f"{family}_{h}h"
+
         print(f"\nHorizon {h}h → winner: {family} (RMSE={row['test_RMSE']:.2f})")
+
+        # Archive ALL other families for this horizon first
+        # Prevents multiple Production models existing for same horizon
+        for other_family in ALL_FAMILIES:
+            if other_family == family:
+                continue
+            other_name = f"{other_family}_{h}h"
+            try:
+                versions = client.search_model_versions(f"name='{other_name}'")
+                for mv in versions:
+                    if mv.current_stage == "Production":
+                        client.transition_model_version_stage(
+                            name=other_name,
+                            version=mv.version,
+                            stage="Archived",
+                            archive_existing_versions=False,
+                        )
+                        logger.info(f"  Archived competing {other_name} v{mv.version}")
+            except Exception:
+                pass
+
         promote_to_production(client, model_name)
 
     print(f"\n✅ DagsHub registry: "

@@ -21,7 +21,6 @@ catboost_info/
 .DS_Store
 Thumbs.db
 /tmp
-notebooks/
 *.zip
 
 !data/**/*.dvc

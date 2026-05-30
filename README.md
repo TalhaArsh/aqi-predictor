@@ -47,6 +47,194 @@ Karachi consistently ranks among the world's most polluted cities. With 15+ mill
 
 ## 🏗️ Architecture
 
+<svg viewBox="0 0 1200 750" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1d4ed8"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#065f46"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="purpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5b21b6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#b45309"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#991b1b"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="750" fill="url(#bgGrad)" rx="16"/>
+
+  <!-- Title -->
+  <text x="600" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#f1f5f9" letter-spacing="2">KARACHI AQI PREDICTOR — MLOPS ARCHITECTURE</text>
+  <text x="600" y="64" text-anchor="middle" font-size="12" fill="#64748b">Serverless · Hourly Features · Daily Retraining · Live Dashboard</text>
+
+  <!-- ── ROW 1: DATA SOURCE ── -->
+  <rect x="420" y="88" width="360" height="72" rx="12" fill="#0f2744" stroke="#1e40af" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="600" y="113" text-anchor="middle" font-size="11" fill="#93c5fd" font-weight="600" letter-spacing="1">DATA SOURCE</text>
+  <text x="600" y="133" text-anchor="middle" font-size="13" fill="#f1f5f9" font-weight="700">🌐  Open-Meteo CAMS API</text>
+  <text x="600" y="151" text-anchor="middle" font-size="10" fill="#64748b">AQI · PM2.5 · PM10 · NO₂ · O₃ · CO · SO₂ · Temperature · Wind · Humidity</text>
+
+  <!-- Arrow down -->
+  <line x1="600" y1="160" x2="600" y2="188" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <text x="620" y="176" font-size="9" fill="#94a3b8">Every hour</text>
+
+  <!-- ── ROW 2: FEATURE PIPELINE + FEATURE STORE ── -->
+  <!-- Feature Pipeline box -->
+  <rect x="88" y="192" width="310" height="106" rx="12" fill="#0c2232" stroke="#0ea5e9" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="243" y="214" text-anchor="middle" font-size="11" fill="#38bdf8" font-weight="600" letter-spacing="1">⚡  FEATURE PIPELINE  (Hourly)</text>
+  <text x="243" y="234" text-anchor="middle" font-size="10" fill="#94a3b8">GitHub Actions  cron: "17 * * * *"</text>
+  <line x1="108" y1="244" x2="378" y2="244" stroke="#1e3a52" stroke-width="1"/>
+  <text x="118" y="260" font-size="10" fill="#e2e8f0">① Fetch live AQI + weather</text>
+  <text x="118" y="276" font-size="10" fill="#e2e8f0">② Append to live Parquet (GH Cache)</text>
+  <text x="118" y="292" font-size="10" fill="#e2e8f0">③ feast apply → register schema</text>
+
+  <!-- Feature Store box -->
+  <rect x="450" y="192" width="300" height="106" rx="12" fill="#0a1f14" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="600" y="214" text-anchor="middle" font-size="11" fill="#34d399" font-weight="600" letter-spacing="1">🗄️  FEATURE STORE</text>
+  <text x="600" y="234" text-anchor="middle" font-size="10" fill="#94a3b8">Feast + Redis Cloud  (TTL = 2h)</text>
+  <line x1="470" y1="244" x2="730" y2="244" stroke="#052e16" stroke-width="1"/>
+  <text x="480" y="260" font-size="10" fill="#e2e8f0">99 keys per entity (96 features)</text>
+  <text x="480" y="276" font-size="10" fill="#e2e8f0">aqi_predictor:features:Karachi</text>
+  <text x="480" y="292" font-size="10" fill="#e2e8f0">Updated every hour automatically</text>
+
+  <!-- Data Versioning box -->
+  <rect x="802" y="192" width="310" height="106" rx="12" fill="#1a0f2e" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="957" y="214" text-anchor="middle" font-size="11" fill="#a78bfa" font-weight="600" letter-spacing="1">📦  DATA VERSIONING</text>
+  <text x="957" y="234" text-anchor="middle" font-size="10" fill="#94a3b8">DVC + DagsHub</text>
+  <line x1="822" y1="244" x2="1092" y2="244" stroke="#2e1065" stroke-width="1"/>
+  <text x="832" y="260" font-size="10" fill="#e2e8f0">2-year historical Parquet</text>
+  <text x="832" y="276" font-size="10" fill="#e2e8f0">Versioned &amp; reproducible</text>
+  <text x="832" y="292" font-size="10" fill="#e2e8f0">DVC pull on every training run</text>
+
+  <!-- Arrows from data source to Feature Pipeline and Feature Store -->
+  <line x1="480" y1="160" x2="300" y2="190" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowBlue)"/>
+  <line x1="600" y1="160" x2="600" y2="190" stroke="#34d399" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrowGreen)"/>
+
+  <!-- Arrow from Feature Pipeline to Feature Store -->
+  <line x1="398" y1="245" x2="448" y2="245" stroke="#38bdf8" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+  <text x="410" y="240" font-size="8" fill="#38bdf8">push</text>
+
+  <!-- Arrows down to Training Pipeline -->
+  <line x1="243" y1="298" x2="380" y2="378" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <line x1="600" y1="298" x2="600" y2="378" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <line x1="957" y1="298" x2="820" y2="378" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <text x="610" y="342" font-size="9" fill="#94a3b8">Daily</text>
+
+  <!-- ── ROW 3: TRAINING PIPELINE ── -->
+  <rect x="220" y="382" width="760" height="140" rx="12" fill="#1a120a" stroke="#d97706" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="600" y="406" text-anchor="middle" font-size="11" fill="#fbbf24" font-weight="600" letter-spacing="1">🔧  TRAINING PIPELINE  (Daily at 02:17 UTC)</text>
+  <text x="600" y="424" text-anchor="middle" font-size="10" fill="#94a3b8">GitHub Actions  cron: "17 2 * * *"  ·  SHAP disabled in CI  ·  90-day rolling window</text>
+  <line x1="240" y1="432" x2="960" y2="432" stroke="#292209" stroke-width="1"/>
+
+  <!-- Steps in training -->
+  <rect x="242" y="442" width="148" height="64" rx="8" fill="#0f0a00" stroke="#78350f" stroke-width="1"/>
+  <text x="316" y="461" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="600">① Merge + Impute</text>
+  <text x="316" y="476" text-anchor="middle" font-size="9" fill="#d4d4d4">90-day window</text>
+  <text x="316" y="490" text-anchor="middle" font-size="9" fill="#d4d4d4">96 features always</text>
+  <text x="316" y="504" text-anchor="middle" font-size="9" fill="#d4d4d4">2,089 rows</text>
+
+  <rect x="404" y="442" width="148" height="64" rx="8" fill="#0f0a00" stroke="#78350f" stroke-width="1"/>
+  <text x="478" y="461" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="600">② Train Models</text>
+  <text x="478" y="476" text-anchor="middle" font-size="9" fill="#d4d4d4">Ridge · RF</text>
+  <text x="478" y="490" text-anchor="middle" font-size="9" fill="#d4d4d4">CatBoost · XGBoost</text>
+  <text x="478" y="504" text-anchor="middle" font-size="9" fill="#d4d4d4">24 models total</text>
+
+  <rect x="566" y="442" width="148" height="64" rx="8" fill="#0f0a00" stroke="#78350f" stroke-width="1"/>
+  <text x="640" y="461" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="600">③ Evaluate</text>
+  <text x="640" y="476" text-anchor="middle" font-size="9" fill="#d4d4d4">RMSE · MAE · R²</text>
+  <text x="640" y="490" text-anchor="middle" font-size="9" fill="#d4d4d4">Chronological split</text>
+  <text x="640" y="504" text-anchor="middle" font-size="9" fill="#d4d4d4">80 / 10 / 10</text>
+
+  <rect x="728" y="442" width="148" height="64" rx="8" fill="#0f0a00" stroke="#78350f" stroke-width="1"/>
+  <text x="802" y="461" text-anchor="middle" font-size="10" fill="#fbbf24" font-weight="600">④ Register Best</text>
+  <text x="802" y="476" text-anchor="middle" font-size="9" fill="#d4d4d4">Archive competitors</text>
+  <text x="802" y="490" text-anchor="middle" font-size="9" fill="#d4d4d4">Promote winner</text>
+  <text x="802" y="504" text-anchor="middle" font-size="9" fill="#d4d4d4">Per horizon</text>
+
+  <!-- Connectors inside training box -->
+  <line x1="390" y1="474" x2="402" y2="474" stroke="#fbbf24" stroke-width="1" marker-end="url(#arrow)"/>
+  <line x1="552" y1="474" x2="564" y2="474" stroke="#fbbf24" stroke-width="1" marker-end="url(#arrow)"/>
+  <line x1="714" y1="474" x2="726" y2="474" stroke="#fbbf24" stroke-width="1" marker-end="url(#arrow)"/>
+
+  <!-- Arrow down from training to Model Registry -->
+  <line x1="600" y1="522" x2="600" y2="552" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+
+  <!-- ── ROW 4: MODEL REGISTRY ── -->
+  <rect x="150" y="556" width="900" height="104" rx="12" fill="#150b1e" stroke="#7c3aed" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="600" y="578" text-anchor="middle" font-size="11" fill="#a78bfa" font-weight="600" letter-spacing="1">🏆  MODEL REGISTRY — DagsHub MLflow</text>
+  <text x="600" y="596" text-anchor="middle" font-size="10" fill="#94a3b8">One Production model per horizon · Dynamic discovery at serving time</text>
+  <line x1="170" y1="604" x2="1030" y2="604" stroke="#2e1065" stroke-width="1"/>
+
+  <!-- Model pills -->
+  <rect x="170" y="612" width="118" height="36" rx="18" fill="#1e1035" stroke="#7c3aed" stroke-width="1"/>
+  <text x="229" y="626" text-anchor="middle" font-size="9" fill="#c4b5fd" font-weight="700">+1h  XGBoost</text>
+  <text x="229" y="640" text-anchor="middle" font-size="9" fill="#a78bfa">R² = 0.998</text>
+
+  <rect x="302" y="612" width="118" height="36" rx="18" fill="#1e1035" stroke="#7c3aed" stroke-width="1"/>
+  <text x="361" y="626" text-anchor="middle" font-size="9" fill="#c4b5fd" font-weight="700">+6h  CatBoost</text>
+  <text x="361" y="640" text-anchor="middle" font-size="9" fill="#a78bfa">R² = 0.975</text>
+
+  <rect x="434" y="612" width="118" height="36" rx="18" fill="#1e1035" stroke="#7c3aed" stroke-width="1"/>
+  <text x="493" y="626" text-anchor="middle" font-size="9" fill="#c4b5fd" font-weight="700">+12h  Ridge</text>
+  <text x="493" y="640" text-anchor="middle" font-size="9" fill="#a78bfa">R² = 0.854</text>
+
+  <rect x="566" y="612" width="118" height="36" rx="18" fill="#1e1035" stroke="#7c3aed" stroke-width="1"/>
+  <text x="625" y="626" text-anchor="middle" font-size="9" fill="#c4b5fd" font-weight="700">+24h  RF</text>
+  <text x="625" y="640" text-anchor="middle" font-size="9" fill="#a78bfa">R² = 0.665</text>
+
+  <rect x="698" y="612" width="118" height="36" rx="18" fill="#1e1035" stroke="#7c3aed" stroke-width="1"/>
+  <text x="757" y="626" text-anchor="middle" font-size="9" fill="#c4b5fd" font-weight="700">+48h  XGBoost</text>
+  <text x="757" y="640" text-anchor="middle" font-size="9" fill="#a78bfa">R² = -0.096</text>
+
+  <rect x="830" y="612" width="118" height="36" rx="18" fill="#1e1035" stroke="#7c3aed" stroke-width="1"/>
+  <text x="889" y="626" text-anchor="middle" font-size="9" fill="#c4b5fd" font-weight="700">+72h  RF</text>
+  <text x="889" y="640" text-anchor="middle" font-size="9" fill="#a78bfa">R² = 0.096</text>
+
+  <!-- Arrow down to Dashboard -->
+  <line x1="600" y1="660" x2="600" y2="688" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+
+  <!-- ── ROW 5: DASHBOARD ── -->
+  <rect x="220" y="692" width="760" height="44" rx="12" fill="#1a0505" stroke="#dc2626" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="600" y="714" text-anchor="middle" font-size="12" fill="#fca5a5" font-weight="700">🚀  LIVE DASHBOARD — Streamlit Community Cloud</text>
+  <text x="600" y="729" text-anchor="middle" font-size="10" fill="#94a3b8">aqi-predictor-10pearls.streamlit.app  ·  Redis features  ·  MLflow models  ·  EPA color coding  ·  Hazard alerts</text>
+
+  <!-- Legend -->
+  <rect x="24" y="660" width="130" height="76" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="89" y="678" text-anchor="middle" font-size="9" fill="#94a3b8" font-weight="600">LEGEND</text>
+  <line x1="36" y1="692" x2="60" y2="692" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="64" y="695" font-size="8" fill="#94a3b8">Hourly flow</text>
+  <line x1="36" y1="708" x2="60" y2="708" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="64" y="711" font-size="8" fill="#94a3b8">Daily flow</text>
+  <line x1="36" y1="724" x2="60" y2="724" stroke="#34d399" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="64" y="727" font-size="8" fill="#94a3b8">Feature push</text>
+
+</svg>
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        DATA SOURCES                             │

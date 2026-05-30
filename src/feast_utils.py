@@ -199,7 +199,7 @@ def push_to_online_store(df: pd.DataFrame):
 
         if feature_dict:
             r.hset(key, mapping=feature_dict)
-            r.expire(key, 7200)  # 2 hour TTL
+            
             logger.info(f"✅ Pushed {len(feature_dict)} features to Redis"
                         f" (key: {key})")
         else:

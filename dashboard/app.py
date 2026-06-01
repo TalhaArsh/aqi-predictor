@@ -763,21 +763,20 @@ def main():
     col_a, col_b = st.columns(2)
 
     with col_a:
-        # Dynamic model info from MLflow — reflects actual Production models
-        r2_map = {1:0.999, 6:0.966, 12:0.914, 24:0.618, 48:-0.105, 72:-0.824}
+        
         # Replace the table building block:
         rows = []
         for h in [1,6,12,24,48,72]:
             info = model_info.get(h, {})
             model_name = info.get("name", "—").replace(f"_{h}h", "").upper()
-            live_r2 = info.get("test_r2") or FALLBACK_R2.get(h, 0)
+            
             live_rmse = info.get("test_rmse")  # pull from MLflow
             rows.append({
                 "Horizon": f"+{h}h",
                 "Model": model_name,
                 "Features": str(info.get("n_features", "—")),
                 "Test RMSE": f"±{live_rmse:.1f}" if live_rmse else "—",
-                "Test R²": f"{live_r2:.3f}",
+                
                 "Forecast AQI": f"{forecasts.get(h):.0f}" if forecasts.get(h) else "—",
             })
         st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)

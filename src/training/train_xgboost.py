@@ -128,13 +128,22 @@ def get_search_grid(horizon: int) -> List[dict]:
              "reg_alpha": 1.0, "reg_lambda": 15.0, "min_child_weight": 25},
         ]
 
+CAT_CATEGORIES = {
+    "hour":        list(range(24)),
+    "day":         list(range(1, 32)),
+    "month":       list(range(1, 13)),
+    "day_of_week": list(range(7)),   # 0=Mon … 6=Sun — all must be declared
+    "is_weekend":  [0, 1],
+}
 
 def cast_categoricals(df: pd.DataFrame) -> pd.DataFrame:
     """Convert categorical feature columns to pandas category dtype for XGBoost."""
     df = df.copy()
     for col in CATEGORICAL_FEATURES:
-        if col in df.columns:
-            df[col] = df[col].astype("category")
+        df[col] = pd.Categorical(
+             df[col].astype(int),
+             categories=CAT_CATEGORIES[col]
+        )
     return df
 
 
